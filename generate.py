@@ -1,5 +1,5 @@
 import sys
-
+import termcolor
 from crossword import *
 
 
@@ -89,11 +89,19 @@ class CrosswordCreator():
         """
         Enforce node and arc consistency, and then solve the CSP.
         """
+        # termcolor.cprint('DOMAINS:', 'green')
+        # termcolor.cprint(self.domains, 'green')
         self.enforce_node_consistency()
         self.ac3()
         return self.backtrack(dict())
 
     def enforce_node_consistency(self):
+        termcolor.cprint("- I enforce node consistency", 'red')
+        for var in self.domains:
+            self.domains[var] = set([val for val in self.domains[var] if len(val)==var.length])
+        # termcolor.cprint(' NEW DOMAINS:', 'green')
+        # termcolor.cprint(self.domains, 'green')
+
         """
         Update `self.domains` such that each variable is node-consistent.
         (Remove any values that are inconsistent with a variable's unary
