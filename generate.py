@@ -1,7 +1,7 @@
 import sys
 import termcolor
 from crossword import *
-
+from queue import Queue
 
 class CrosswordCreator():
 
@@ -89,25 +89,28 @@ class CrosswordCreator():
         """
         Enforce node and arc consistency, and then solve the CSP.
         """
-        # termcolor.cprint('DOMAINS:', 'green')
-        # termcolor.cprint(self.domains, 'green')
+        #termcolor.cprint('VARIABLES:', 'red')
+        #termcolor.cprint(self.crossword.variables, 'red')
+        
+        #termcolor.cprint('INIT DOMAINS:', 'red')
+        #termcolor.cprint(self.domains, 'green')
+        #termcolor.cprint('OVERLAPS', 'red')
+        #termcolor.cprint(self.crossword.overlaps, 'green')
         self.enforce_node_consistency()
         self.ac3()
         return self.backtrack(dict())
 
     def enforce_node_consistency(self):
-        termcolor.cprint("- I enforce node consistency", 'red')
-        for var in self.domains:
-            self.domains[var] = set([val for val in self.domains[var] if len(val)==var.length])
-        # termcolor.cprint(' NEW DOMAINS:', 'green')
-        # termcolor.cprint(self.domains, 'green')
-
         """
         Update `self.domains` such that each variable is node-consistent.
         (Remove any values that are inconsistent with a variable's unary
          constraints; in this case, the length of the word.)
         """
-        raise NotImplementedError
+        termcolor.cprint("- I enforce node consistency", 'red')
+        for var in self.domains:
+            self.domains[var] = set(val for val in self.domains[var] if len(val)==var.length)
+        #termcolor.cprint(' NEW DOMAINS:', 'red')
+        #termcolor.cprint(self.domains, 'green')
 
     def revise(self, x, y):
         """
@@ -118,7 +121,44 @@ class CrosswordCreator():
         Return True if a revision was made to the domain of `x`; return
         False if no revision was made.
         """
-        raise NotImplementedError
+
+        def exists_valid_overlap(value_x, y, index_x, index_y):
+            there_is_y = False
+            for val_y in self.domains[y]:
+                if value_x[index_x] == val_y[index_y] and value_x != val_y:
+                    # print(f"For value {value_x}, there is {val_y}")
+                    there_is_y = True
+                    break
+            return there_is_y
+
+        termcolor.cprint(f"I am revise between {x.__str__()} and {y.__str__()}", 'red')
+        #termcolor.cprint(f"domain[X]: {self.domains[x]}\ndomain[Y]: {self.domains[y]}", 'red')
+        
+        revised = False
+        inter = set.intersection(self.domains[x], self.domains[y])
+        if inter:
+            print(f"THEY HAVE {len(inter)} COMMON")
+            #print(inter)
+        if len(self.domains[y]) == 1:
+            termcolor.cprint("FOUND LONELY", 'red')
+            value_y = self.domains[y].pop()
+            if value_y in self.domains[x]:
+                termcolor.cprint("FOUND DUPLICATE", 'yellow')
+                self.domains[x].remove(value_y)
+                revised = True
+            self.domains[y].add(value_y)
+
+            
+        overlap = self.crossword.overlaps[x, y]
+        if overlap:
+            index_x, index_y = overlap
+            #termcolor.cprint(f"They have an overlap at {overlap}", "red")
+            for value_x in self.domains[x].copy():
+                if not exists_valid_overlap(value_x, y, index_x, index_y):
+                    #termcolor.cprint(f"I remove {value_x} from domain of X", 'yellow')
+                    self.domains[x].remove(value_x)
+                    revised = True
+        return revised
 
     def ac3(self, arcs=None):
         """
@@ -129,21 +169,90 @@ class CrosswordCreator():
         Return True if arc consistency is enforced and no domains are empty;
         return False if one or more domains end up empty.
         """
-        raise NotImplementedError
+        termcolor.cprint("I am ac3", 'red')
+        # queue initialization
+        if not arcs:
+            #arcs = list(self.crossword.overlaps.keys())
+            
+            #termcolor.cprint("ARCS", 'yellow')
+            #termcolor.cprint(arcs, 'yellow')
+            arcs = [(x, y) for x in self.crossword.variables for y in self.crossword.variables if x!=y]
+            #termcolor.cprint("ARCS", 'yellow')
+            #termcolor.cprint(arcs, 'yellow')
+
+        q = Queue()
+        for arc in arcs:
+            q.put(arc)
+
+        # repeat
+        while not q.empty():
+            X, Y = q.get()
+            termcolor.cprint(f"I dequeue the arc ({X}, {Y})")
+            old_domain = self.domains[X].copy()        
+            if self.revise(X, Y):
+                #print(f"I updated domain of {X} from:", old_domain, sep='\n', end=' ')
+                #print("to:", self.domains[X], sep='\n')
+                if len(self.domains[X]) == 0:
+                    return False
+                
+                neighbors = set([var for var,curr in arcs if curr == X])
+                #termcolor.cprint("Neighbors before:", 'red')
+                #termcolor.cprint(neighbors, 'red')
+                if Y in neighbors:
+                    neighbors.remove(Y)
+                if X in neighbors:
+                    neighbors.remove(X)
+                #termcolor.cprint("Neighbors after:", 'red')
+                #termcolor.cprint(neighbors, 'red')
+                for Z in neighbors:
+                    q.put((Z, X))
+        return True
 
     def assignment_complete(self, assignment):
         """
         Return True if `assignment` is complete (i.e., assigns a value to each
         crossword variable); return False otherwise.
         """
-        raise NotImplementedError
+
+        variables = self.crossword.variables
+        assigned = assignment.keys()
+
+        return not len(set(variables-assigned))
 
     def consistent(self, assignment):
         """
         Return True if `assignment` is consistent (i.e., words fit in crossword
         puzzle without conflicting characters); return False otherwise.
         """
-        raise NotImplementedError
+
+        # check distinct words
+        values_num = len(list(assignment.values()))
+        distinct_values_num = len(set(assignment.values()))
+        if values_num != distinct_values_num:
+            return False
+        
+        # check words length
+        for var in assignment:
+            if var.length != len(assignment[var]):
+                return False
+        
+        # check neighbor conflicts
+        '''for overlap in self.crossword.overlaps:
+            X, Y = overlap
+            index_x = overlap[(X, Y)][0]
+            index_y = overlap[(X, Y)][1]
+            if X in assignment and Y in assignment:
+                if assignment[X][index_x] != assignment[Y][index_y]:
+                    return False
+        '''
+        for X in assignment:
+            neighbors = self.crossword.neighbors(X)
+            for Y in set.intersection(neighbors, set(assignment.keys())):
+                index_x = self.crossword.overlaps[(X, Y)][0]
+                index_y = self.crossword.overlaps[(X, Y)][1]
+                if assignment[X][index_x] != assignment[Y][index_y]:
+                    return False
+        return True
 
     def order_domain_values(self, var, assignment):
         """
@@ -152,7 +261,7 @@ class CrosswordCreator():
         The first value in the list, for example, should be the one
         that rules out the fewest values among the neighbors of `var`.
         """
-        raise NotImplementedError
+        return self.domains[var]
 
     def select_unassigned_variable(self, assignment):
         """
@@ -162,7 +271,10 @@ class CrosswordCreator():
         degree. If there is a tie, any of the tied variables are acceptable
         return values.
         """
-        raise NotImplementedError
+        for var in self.crossword.variables:
+            if var not in assignment:
+                return var
+        return None
 
     def backtrack(self, assignment):
         """
@@ -173,7 +285,18 @@ class CrosswordCreator():
 
         If no assignment is possible, return None.
         """
-        raise NotImplementedError
+        if not self.consistent(assignment):
+            return None
+        if self.assignment_complete(assignment):
+            return assignment
+        var = self.select_unassigned_variable(assignment)
+        for value in self.order_domain_values(var, assignment):
+            assignment[var] = value
+            result = self.backtrack(assignment)
+            if result is not None:
+                return result
+            del assignment[var]
+        return None
 
 
 def main():
