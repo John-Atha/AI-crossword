@@ -2,6 +2,7 @@ import sys
 #import termcolor
 from crossword import *
 from queue import Queue
+import copy
 
 class CrosswordCreator():
 
@@ -91,9 +92,7 @@ class CrosswordCreator():
         """
         self.enforce_node_consistency()
         self.ac3()
-        res = self.backtrack(dict())
-        assert self.consistent(res)
-        return res
+        return self.backtrack(dict())
 
     def enforce_node_consistency(self):
         """
@@ -152,11 +151,9 @@ class CrosswordCreator():
                 if len(self.domains[X]) == 0:
                     return False
                 
-                neighbors = set([var for var,curr in arcs if curr == X])
+                neighbors = self.crossword.neighbors(X)
                 if Y in neighbors:
                     neighbors.remove(Y)
-                if X in neighbors:
-                    neighbors.remove(X)
                 for Z in neighbors:
                     q.put((Z, X))
         return True
@@ -205,7 +202,7 @@ class CrosswordCreator():
         The first value in the list, for example, should be the one
         that rules out the fewest values among the neighbors of `var`.
         """
-        # does not update anything
+        
         def constraints_removed_by_neighbor(Z, val):
             removed = 0
             if Z not in assignment:
@@ -223,8 +220,9 @@ class CrosswordCreator():
             old_domain = self.domains[var].copy()
             self.domains[var] = set([val])
             constraints_removed = 0
-            for Z in set.intersection(self.crossword.neighbors(var), vars_left):
-                constraints_removed += constraints_removed_by_neighbor(Z, val)
+            for Z in self.crossword.neighbors(var):
+                if Z in vars_left:
+                    constraints_removed += constraints_removed_by_neighbor(Z, val)
             self.domains[var] = old_domain
             return constraints_removed
 
@@ -244,6 +242,7 @@ class CrosswordCreator():
         
         self.domains = init_domain
         
+        values = self.domains[var].copy()
         return values
 
     def select_unassigned_variable(self, assignment):
