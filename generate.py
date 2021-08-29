@@ -2,6 +2,7 @@ import sys
 import termcolor
 from crossword import *
 from queue import Queue
+import copy
 
 class CrosswordCreator():
 
@@ -106,7 +107,7 @@ class CrosswordCreator():
         (Remove any values that are inconsistent with a variable's unary
          constraints; in this case, the length of the word.)
         """
-        termcolor.cprint("- I enforce node consistency", 'red')
+        #termcolor.cprint("- I enforce node consistency", 'red')
         for var in self.domains:
             self.domains[var] = set(val for val in self.domains[var] if len(val)==var.length)
         #termcolor.cprint(' NEW DOMAINS:', 'red')
@@ -123,30 +124,28 @@ class CrosswordCreator():
         """
 
         def exists_valid_overlap(value_x, y, index_x, index_y):
-            there_is_y = False
             for val_y in self.domains[y]:
                 if value_x[index_x] == val_y[index_y] and value_x != val_y:
-                    # print(f"For value {value_x}, there is {val_y}")
-                    there_is_y = True
-                    break
-            return there_is_y
+                    return True
+            return False
 
-        termcolor.cprint(f"I am revise between {x.__str__()} and {y.__str__()}", 'red')
+        #termcolor.cprint(f"----I am revise between {x.__str__()} and {y.__str__()}", 'red')
         #termcolor.cprint(f"domain[X]: {self.domains[x]}\ndomain[Y]: {self.domains[y]}", 'red')
         
         revised = False
-        inter = set.intersection(self.domains[x], self.domains[y])
-        if inter:
-            print(f"THEY HAVE {len(inter)} COMMON")
+        #inter = set.intersection(self.domains[x], self.domains[y])
+        #if inter:
+            #print(f"THEY HAVE {len(inter)} COMMON")
             #print(inter)
-        if len(self.domains[y]) == 1:
-            termcolor.cprint("FOUND LONELY", 'red')
-            value_y = self.domains[y].pop()
-            if value_y in self.domains[x]:
-                termcolor.cprint("FOUND DUPLICATE", 'yellow')
-                self.domains[x].remove(value_y)
-                revised = True
-            self.domains[y].add(value_y)
+        #    pass
+        #if len(self.domains[y]) == 1:
+        #    #termcolor.cprint("FOUND LONELY", 'red')
+        #    value_y = self.domains[y].pop()
+        #    if value_y in self.domains[x]:
+        #        #termcolor.cprint("FOUND DUPLICATE", 'yellow')
+        #        self.domains[x].remove(value_y)
+        #        revised = True
+        #    self.domains[y].add(value_y)
 
             
         overlap = self.crossword.overlaps[x, y]
@@ -158,6 +157,7 @@ class CrosswordCreator():
                     #termcolor.cprint(f"I remove {value_x} from domain of X", 'yellow')
                     self.domains[x].remove(value_x)
                     revised = True
+        #termcolor.cprint(f"----I revised them", 'red')
         return revised
 
     def ac3(self, arcs=None):
@@ -169,7 +169,7 @@ class CrosswordCreator():
         Return True if arc consistency is enforced and no domains are empty;
         return False if one or more domains end up empty.
         """
-        termcolor.cprint("I am ac3", 'red')
+        #termcolor.cprint("I am ac3", 'red')
         # queue initialization
         if not arcs:
             #arcs = list(self.crossword.overlaps.keys())
@@ -187,12 +187,13 @@ class CrosswordCreator():
         # repeat
         while not q.empty():
             X, Y = q.get()
-            termcolor.cprint(f"I dequeue the arc ({X}, {Y})")
+            #termcolor.cprint(f"I dequeue the arc ({X}, {Y})")
             old_domain = self.domains[X].copy()        
             if self.revise(X, Y):
-                #print(f"I updated domain of {X} from:", old_domain, sep='\n', end=' ')
+                #termcolor.cprint(f"I updated domain of {X}", 'green')
                 #print("to:", self.domains[X], sep='\n')
                 if len(self.domains[X]) == 0:
+                    #termcolor.cprint("I am ac3 and returning TRUE", 'green')
                     return False
                 
                 neighbors = set([var for var,curr in arcs if curr == X])
@@ -206,6 +207,8 @@ class CrosswordCreator():
                 #termcolor.cprint(neighbors, 'red')
                 for Z in neighbors:
                     q.put((Z, X))
+            #termcolor.cprint(f"I did not update domain of {X}", 'green')
+        #termcolor.cprint("I am ac3 and returning TRUE", 'green')
         return True
 
     def assignment_complete(self, assignment):
@@ -254,14 +257,88 @@ class CrosswordCreator():
                     return False
         return True
 
-    def order_domain_values(self, var, assignment):
+    def order_domain_values(self, var, assignment):      
         """
         Return a list of values in the domain of `var`, in order by
         the number of values they rule out for neighboring variables.
         The first value in the list, for example, should be the one
         that rules out the fewest values among the neighbors of `var`.
         """
-        return self.domains[var]
+        
+        def constraints_removed_by_neighbor(Z):
+            removed = 0
+            #termcolor.cprint(f"From domain ({len(init_domain[Z])}):", 'blue')
+            #termcolor.cprint(init_domain[Z], 'yellow')
+            if self.revise(Z, var):
+                #termcolor.cprint(init_domain[Z], 'yellow')
+                removed += len(assign_domain[Z])-len(self.domains[Z])
+                #termcolor.cprint(f"To domain ({len(self.domains[Z])}):", 'blue')
+                #termcolor.cprint(self.domains[Z], 'yellow')
+                #termcolor.cprint(f"I cut {removed} values for this neighbor")
+            return removed
+        
+        def constraints_removed_by_value(val):
+            self.domains = copy.deepcopy(assign_domain)
+            self.domains[var] = set()
+            self.domains[var].add(val)
+            constraints_removed = 0
+            for Z in set.intersection(self.crossword.neighbors(var), vars_left):
+                #termcolor.cprint(f"For neighbor {Z.__str__()}")
+                constraints_removed += constraints_removed_by_neighbor(Z)
+                self.domains[Z] = copy.deepcopy(assign_domain[Z])
+            #termcolor.cprint(f"Value {value} removes {constraints_removed} constraints.", 'blue')
+            return constraints_removed
+
+        if not self.domains[var]:
+            return []
+        
+        #termcolor.cprint("ASSIGNMENT", 'yellow')
+        #termcolor.cprint(assignment, 'yellow')
+
+        # keep a copy of domains to restore them in the end
+        init_init_domain = copy.deepcopy(self.domains)
+
+        # update the domains of the assigned variables
+        for assigned in assignment:
+            #print('--------------')
+            #termcolor.cprint(assignment[var], 'red')
+            #termcolor.cprint(self.domains[var], 'yellow')
+            #print(assignment[var] in self.domains[var])
+            #print('--------------')
+            self.domains[assigned] = set()
+            self.domains[assigned].add(assignment[assigned])
+
+        #termcolor.cprint(f"I will pick the next value for var: ({var.__str__()}) from domain", 'blue')
+        #termcolor.cprint(self.domains[var], 'blue')
+
+
+        assign_domain = copy.deepcopy(self.domains)
+
+        vars_left = set(self.crossword.variables - set(assignment.keys()))
+        values = self.domains[var].copy()
+
+        c = 0
+        #for value in values:
+            #if c==2 or c==3:
+            #    #termcolor.cprint("I initialize the domains to", 'green')
+            #    #termcolor.cprint(self.domains, 'green')
+            #termcolor.cprint(f"Value {value}:", 'blue')
+        #    rem = constraints_removed_by_value(value)
+
+        values2 = sorted(values, key = lambda value: constraints_removed_by_value(value))
+        #termcolor.cprint(list(values), 'green')
+        #termcolor.cprint(values2, 'red')
+        #termcolor.cprint(set.intersection(set(values), set(values2))==set(values), 'yellow' )
+        
+        self.domains = init_init_domain
+        
+        #values = list(copy.deepcopy(self.domains[var]))
+        #random.shuffle(values)
+        
+        #termcolor.cprint(values2, 'red')
+        #return [value for value in self.domains[var]]
+
+        return values2
 
     def select_unassigned_variable(self, assignment):
         """
@@ -271,10 +348,14 @@ class CrosswordCreator():
         degree. If there is a tie, any of the tied variables are acceptable
         return values.
         """
-        for var in self.crossword.variables:
-            if var not in assignment:
-                return var
-        return None
+
+        vars_left = list(self.crossword.variables-set(assignment.keys()))
+
+        # my_vars_left = [my_variable(var, len(self.domains[var]), len(self.crossword.neighbors(var))) for var in vars_left]
+
+        my_vars_left = sorted(vars_left, key=lambda var: (len(self.domains[var]), -len(self.crossword.neighbors(var))))
+
+        return my_vars_left[0] if my_vars_left else None
 
     def backtrack(self, assignment):
         """
@@ -285,12 +366,17 @@ class CrosswordCreator():
 
         If no assignment is possible, return None.
         """
+        #termcolor.cprint("I am backtrack", 'green')
         if not self.consistent(assignment):
             return None
+        #termcolor.cprint("Ass is consistent", 'green')
         if self.assignment_complete(assignment):
             return assignment
+        #termcolor.cprint("Ass is not complete", 'green')
         var = self.select_unassigned_variable(assignment)
+        #termcolor.cprint(f"Chose var: {var.__str__()}", 'yellow')
         for value in self.order_domain_values(var, assignment):
+            #termcolor.cprint(f"Testing value {value}", 'yellow')
             assignment[var] = value
             result = self.backtrack(assignment)
             if result is not None:
